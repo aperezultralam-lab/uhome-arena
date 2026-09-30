@@ -7,66 +7,152 @@ const {WebSocketServer}=require("ws");
 const PORT=process.env.PORT||3000;
 const MAX_PLAYERS=Number(process.env.MAX_PLAYERS||32);
 const ROUND_MS=5*60*1000;
+const RESPAWN_MS=2200;
+
 const app=express();
-app.use(express.static(path.join(__dirname,"public")));
-app.get("/health",(req,res)=>res.json({ok:true,players:players.size,maxPlayers:MAX_PLAYERS}));
+app.disable("x-powered-by");
+app.use(express.static(path.join(__dirname,"public"),{maxAge:"5m"}));
 const server=http.createServer(app);
 const wss=new WebSocketServer({server,path:"/ws"});
 
-const materials=[
-{id:"lambrin",name:"Lambrín Interior",category:"wall",points:12,color:"#9b6a43"},
-{id:"piedra",name:"Piedra Flexible",category:"wall",points:18,color:"#62666b"},
-{id:"bamboo",name:"Placa Bamboo",category:"wall",points:16,color:"#786a55"},
-{id:"marmol",name:"Placa tipo Mármol",category:"wall",points:16,color:"#ece8df"},
-{id:"spc",name:"Piso SPC",category:"floor",points:14,color:"#806247"},
-{id:"deck",name:"Piso Deck",category:"floor",points:15,color:"#a77546"},
-{id:"viga",name:"Viga WPC",category:"beam",points:15,color:"#875d37"},
-{id:"plafon",name:"Plafón Exterior",category:"ceiling",points:13,color:"#d9dde3"}
+const WEAPONS=[
+ {id:"spc_carbine",name:"SPC CARBINE",product:"Piso SPC Nogal Americano",damage:24,fireRate:120,range:70,mag:28,reload:1350,mode:"auto",color:"#8b674b",accent:"#22d3ee"},
+ {id:"bamboo_smg",name:"BAMBOO SMG",product:"Placa Bamboo",damage:16,fireRate:75,range:48,mag:36,reload:1200,mode:"auto",color:"#9a7b55",accent:"#a7f3d0"},
+ {id:"marmol_dmr",name:"MÁRMOL DMR",product:"Placa Mármol Statuario",damage:48,fireRate:380,range:95,mag:10,reload:1650,mode:"semi",color:"#e9e6df",accent:"#f59e0b"},
+ {id:"ultraflex_cannon",name:"ULTRAFLEX CANNON",product:"Piedra Flexible Rough Cocoon",damage:74,fireRate:900,range:34,mag:5,reload:1900,mode:"semi",color:"#7c6554",accent:"#fb7185"},
+ {id:"lambrin_burst",name:"LAMBRÍN BURST",product:"Lambrín Interior Parota",damage:31,fireRate:210,range:62,mag:21,reload:1450,mode:"semi",color:"#8a5c3d",accent:"#60a5fa"},
+ {id:"wpc_heavy",name:"WPC HEAVY",product:"Viga WPC Teca",damage:58,fireRate:650,range:55,mag:8,reload:2100,mode:"semi",color:"#705038",accent:"#c084fc"}
 ];
-const zones=[
-{id:"z1",name:"Muro Lobby",x:-14,y:2.2,z:-13,w:8,h:4.4,d:.5,type:"wall"},
-{id:"z2",name:"Muro Sala",x:14,y:2.2,z:-13,w:8,h:4.4,d:.5,type:"wall"},
-{id:"z3",name:"Muro Boutique",x:-18,y:2.2,z:3,w:6,h:4.4,d:.5,type:"wall"},
-{id:"z4",name:"Piso Showroom",x:-11,y:.08,z:10,w:10,h:.16,d:8,type:"floor"},
-{id:"z5",name:"Piso Terraza",x:12,y:.08,z:10,w:10,h:.16,d:8,type:"floor"},
-{id:"z6",name:"Viga Galería",x:0,y:3.6,z:0,w:11,h:.45,d:.45,type:"beam"},
-{id:"z7",name:"Plafón Central",x:0,y:5.2,z:-11,w:10,h:.18,d:7,type:"ceiling"}
-];
-const players=new Map(), zoneState=new Map();
-zones.forEach(z=>zoneState.set(z.id,{zoneId:z.id,materialId:null,ownerId:null,claimedAt:0}));
-let round=1, roundStarted=Date.now();
 
-function spawn(i){const s=[[-20,1.7,18],[20,1.7,18],[-20,1.7,-18],[20,1.7,-18],[0,1.7,20],[0,1.7,-20]];const p=s[i%s.length];return{x:p[0],y:p[1],z:p[2],yaw:0,pitch:0}}
-function clean(v){return String(v||"").replace(/[<>&"'\x60]/g,"").slice(0,18)||"Diseñador"}
-function pub(p){return{id:p.id,name:p.name,score:p.score,combo:p.combo,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch}}
-function material(id){return materials.find(m=>m.id===id)}
-function zone(id){return zones.find(z=>z.id===id)}
+const SPAWNS=[
+ [-21,1.72,21],[21,1.72,21],[-21,1.72,-21],[21,1.72,-21],
+ [0,1.72,22],[0,1.72,-22],[-22,1.72,0],[22,1.72,0]
+];
+
+const players=new Map();
+let round=1,roundStarted=Date.now();
+
+function clean(v){return String(v||"").replace(/[<>&"'\x60]/g,"").slice(0,18)||"Jugador"}
+function spawn(i){const s=SPAWNS[i%SPAWNS.length];return{x:s[0],y:s[1],z:s[2],yaw:0,pitch:0}}
+function freshAmmo(){return Object.fromEntries(WEAPONS.map(w=>[w.id,w.mag]))}
+function pub(p){return{id:p.id,name:p.name,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,hp:p.hp,kills:p.kills,deaths:p.deaths,score:p.score,alive:p.alive,weaponId:p.weaponId}}
+function weapon(id){return WEAPONS.find(w=>w.id===id)}
+function send(ws,o){if(ws.readyState===1)ws.send(JSON.stringify(o))}
 function broadcast(o){const s=JSON.stringify(o);wss.clients.forEach(c=>{if(c.readyState===1)c.send(s)})}
-function snapshot(){return{type:"snapshot",round,roundEndsAt:roundStarted+ROUND_MS,players:[...players.values()].map(pub),zones:[...zoneState.values()]}}
-function resetRound(){round++;roundStarted=Date.now();let i=0;players.forEach(p=>{p.score=0;p.combo=0;Object.assign(p,spawn(i++))});zoneState.forEach(z=>{z.materialId=null;z.ownerId=null;z.claimedAt=0});broadcast(snapshot())}
+function snapshot(){return{type:"snapshot",round,roundEndsAt:roundStarted+ROUND_MS,players:[...players.values()].map(pub)}}
+function resetRound(){
+ round++;roundStarted=Date.now();
+ let i=0;
+ players.forEach(p=>{Object.assign(p,spawn(i++));p.hp=100;p.alive=true;p.kills=0;p.deaths=0;p.score=0;p.ammo=freshAmmo();p.lastShot={};p.reloadUntil={}});
+ broadcast({type:"roundReset",round,roundEndsAt:roundStarted+ROUND_MS});
+}
+function validDir(d){return d&&[d.x,d.y,d.z].every(Number.isFinite)}
+function normalize(d){const l=Math.hypot(d.x,d.y,d.z)||1;return{x:d.x/l,y:d.y/l,z:d.z/l}}
+function rayHit(origin,dir,target,maxRange){
+ const cx=target.x,cy=target.y-.78,cz=target.z;
+ const ox=origin.x-cx,oy=origin.y-cy,oz=origin.z-cz;
+ const b=ox*dir.x+oy*dir.y+oz*dir.z;
+ const c=ox*ox+oy*oy+oz*oz-.72*.72;
+ const disc=b*b-c;
+ if(disc<0)return null;
+ const t=-b-Math.sqrt(disc);
+ return t>=0&&t<=maxRange?t:null;
+}
+function respawn(p){
+ setTimeout(()=>{
+  if(!players.has(p.id))return;
+  Object.assign(p,spawn(Math.floor(Math.random()*SPAWNS.length)));
+  p.hp=100;p.alive=true;p.ammo=freshAmmo();
+  broadcast({type:"respawn",player:pub(p)});
+ },RESPAWN_MS);
+}
+
+app.get("/health",(req,res)=>res.json({ok:true,players:players.size,maxPlayers:MAX_PLAYERS,round}));
 
 wss.on("connection",ws=>{
- if(players.size>=MAX_PLAYERS){ws.send(JSON.stringify({type:"error",message:"Sala llena"}));ws.close();return}
+ if(players.size>=MAX_PLAYERS){send(ws,{type:"error",message:"Sala llena"});ws.close();return}
  const id=crypto.randomUUID();let joined=false;
+
  ws.on("message",raw=>{
   let msg;try{msg=JSON.parse(raw.toString())}catch{return}
+
   if(msg.type==="join"&&!joined){
-   joined=true;const p=Object.assign({id,name:clean(msg.name),score:0,combo:0,lastSeen:Date.now()},spawn(players.size));
-   players.set(id,p);ws.send(JSON.stringify({type:"welcome",id,materials,zones,player:pub(p),snapshot:snapshot()}));broadcast({type:"playerJoined",player:pub(p)});return
+   joined=true;
+   const p=Object.assign({
+    id,name:clean(msg.name),hp:100,kills:0,deaths:0,score:0,alive:true,
+    weaponId:WEAPONS[0].id,ammo:freshAmmo(),lastSeen:Date.now(),lastShot:{},reloadUntil:{}
+   },spawn(players.size));
+   players.set(id,p);
+   send(ws,{type:"welcome",id,weapons:WEAPONS,player:pub(p),ammo:p.ammo,snapshot:snapshot()});
+   broadcast({type:"playerJoined",player:pub(p)});
+   return;
   }
-  const p=players.get(id);if(!p)return;p.lastSeen=Date.now();
-  if(msg.type==="state"){
-   const nx=Math.max(-25,Math.min(25,Number(msg.x)||0)),ny=Math.max(1.2,Math.min(10,Number(msg.y)||1.7)),nz=Math.max(-25,Math.min(25,Number(msg.z)||0));
-   if(Math.hypot(nx-p.x,ny-p.y,nz-p.z)<5){p.x=nx;p.y=ny;p.z=nz}p.yaw=Number(msg.yaw)||0;p.pitch=Number(msg.pitch)||0
+
+  const p=players.get(id);if(!p)return;
+  p.lastSeen=Date.now();
+
+  if(msg.type==="state"&&p.alive){
+   const nx=Math.max(-26,Math.min(26,Number(msg.x)||0));
+   const ny=Math.max(1.15,Math.min(12,Number(msg.y)||1.72));
+   const nz=Math.max(-26,Math.min(26,Number(msg.z)||0));
+   if(Math.hypot(nx-p.x,ny-p.y,nz-p.z)<5.5){p.x=nx;p.y=ny;p.z=nz}
+   p.yaw=Number(msg.yaw)||0;p.pitch=Number(msg.pitch)||0;
+   const w=weapon(msg.weaponId);if(w)p.weaponId=w.id;
+   return;
   }
-  if(msg.type==="claim"){
-   const z=zone(msg.zoneId),m=material(msg.materialId);if(!z||!m||z.type!==m.category)return;if(Math.hypot(p.x-z.x,p.z-z.z)>7)return;
-   const zs=zoneState.get(z.id);if(Date.now()-zs.claimedAt<800)return;const same=zs.ownerId===p.id;zs.materialId=m.id;zs.ownerId=p.id;zs.claimedAt=Date.now();
-   p.combo=same?Math.min(8,p.combo+1):1;p.score+=m.points+(p.combo-1)*2;broadcast({type:"claimed",zone:zs,player:{id:p.id,score:p.score,combo:p.combo},material:m})
+
+  if(msg.type==="reload"&&p.alive){
+   const w=weapon(msg.weaponId);if(!w)return;
+   const now=Date.now();if((p.reloadUntil[w.id]||0)>now)return;
+   p.reloadUntil[w.id]=now+w.reload;
+   setTimeout(()=>{
+    if(!players.has(id))return;
+    p.ammo[w.id]=w.mag;
+    send(ws,{type:"ammo",weaponId:w.id,ammo:p.ammo[w.id],reloaded:true});
+   },w.reload);
+   return;
+  }
+
+  if(msg.type==="shoot"&&p.alive){
+   const w=weapon(msg.weaponId);if(!w||!validDir(msg.dir))return;
+   const now=Date.now();
+   if((p.reloadUntil[w.id]||0)>now)return;
+   if(now-(p.lastShot[w.id]||0)<w.fireRate*.82)return;
+   if((p.ammo[w.id]||0)<=0){send(ws,{type:"empty",weaponId:w.id});return}
+   p.lastShot[w.id]=now;p.weaponId=w.id;p.ammo[w.id]--;
+   const dir=normalize(msg.dir);
+   const origin={x:p.x,y:p.y-.05,z:p.z};
+   let best=null,bestT=Infinity;
+   players.forEach(t=>{
+    if(t.id===p.id||!t.alive)return;
+    const dist=Math.hypot(t.x-p.x,t.y-p.y,t.z-p.z);if(dist>w.range+2)return;
+    const hit=rayHit(origin,dir,t,w.range);
+    if(hit!==null&&hit<bestT){best=t;bestT=hit}
+   });
+   broadcast({type:"shot",shooterId:p.id,weaponId:w.id,origin,dir,hitId:best?best.id:null});
+   send(ws,{type:"ammo",weaponId:w.id,ammo:p.ammo[w.id]});
+   if(best){
+    best.hp=Math.max(0,best.hp-w.damage);
+    p.score+=w.damage;
+    send(ws,{type:"hitConfirm",targetId:best.id,damage:w.damage,killed:best.hp<=0});
+    broadcast({type:"damage",targetId:best.id,hp:best.hp,attackerId:p.id,weaponId:w.id});
+    if(best.hp<=0&&best.alive){
+     best.alive=false;best.deaths++;p.kills++;p.score+=100;
+     broadcast({type:"elimination",killerId:p.id,victimId:best.id,weaponId:w.id,killerKills:p.kills,killerScore:p.score,victimDeaths:best.deaths});
+     respawn(best);
+    }
+   }
   }
  });
- ws.on("close",()=>{if(players.delete(id))broadcast({type:"playerLeft",id})})
+
+ ws.on("close",()=>{if(players.delete(id))broadcast({type:"playerLeft",id})});
 });
 
-setInterval(()=>{const now=Date.now();players.forEach((p,id)=>{if(now-p.lastSeen>25000){players.delete(id);broadcast({type:"playerLeft",id})}});if(now-roundStarted>=ROUND_MS)resetRound();broadcast(snapshot())},100);
-server.listen(PORT,"0.0.0.0",()=>console.log("UHome Arena running on "+PORT));
+setInterval(()=>{
+ const now=Date.now();
+ players.forEach((p,id)=>{if(now-p.lastSeen>30000){players.delete(id);broadcast({type:"playerLeft",id})}});
+ if(now-roundStarted>=ROUND_MS)resetRound();
+ broadcast(snapshot());
+},100);
+
+server.listen(PORT,"0.0.0.0",()=>console.log("UHome Arena FPS running on "+PORT));
