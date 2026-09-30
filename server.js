@@ -25,8 +25,35 @@ const WEAPONS=[
 ];
 
 const SPAWNS=[
- [-21,1.72,21],[21,1.72,21],[-21,1.72,-21],[21,1.72,-21],
- [0,1.72,22],[0,1.72,-22],[-22,1.72,0],[22,1.72,0]
+ [-24,1.72,24],[24,1.72,24],[-24,1.72,-24],[24,1.72,-24],
+ [0,1.72,25],[0,1.72,-25],[-25,1.72,0],[25,1.72,0]
+];
+
+const WORLD_LIMIT=29.2;
+const BLOCKERS=[
+ // perimeter
+ {minX:-31,maxX:31,minY:0,maxY:4.8,minZ:-31,maxZ:-30},
+ {minX:-31,maxX:31,minY:0,maxY:4.8,minZ:30,maxZ:31},
+ {minX:-31,maxX:-30,minY:0,maxY:4.8,minZ:-31,maxZ:31},
+ {minX:30,maxX:31,minY:0,maxY:4.8,minZ:-31,maxZ:31},
+ // feature walls
+ {minX:-22.5,maxX:-11.5,minY:0,maxY:4.2,minZ:-12.4,maxZ:-11.6},
+ {minX:10,maxX:22,minY:0,maxY:4.2,minZ:-13.4,maxZ:-12.6},
+ {minX:-24,maxX:-16,minY:0,maxY:4.2,minZ:7.6,maxZ:8.4},
+ {minX:14.5,maxX:23.5,minY:0,maxY:4.2,minZ:9.6,maxZ:10.4},
+ // central cover / islands
+ {minX:-5.5,maxX:5.5,minY:0,maxY:2.45,minZ:-3.9,maxZ:-0.1},
+ {minX:-12.6,maxX:-5.4,minY:0,maxY:1.95,minZ:7.5,maxZ:12.5},
+ {minX:5.4,maxX:12.6,minY:0,maxY:1.95,minZ:8.5,maxZ:13.5},
+ {minX:-12.8,maxX:-7.2,minY:0,maxY:1.95,minZ:-4.2,maxZ:0.2},
+ {minX:7.2,maxX:12.8,minY:0,maxY:1.95,minZ:-6.2,maxZ:-1.8},
+ {minX:-6.7,maxX:6.7,minY:0,maxY:1.7,minZ:16.2,maxZ:19.8},
+ {minX:-6.7,maxX:6.7,minY:0,maxY:1.7,minZ:-20.8,maxZ:-17.2},
+ // corner structures
+ {minX:-26,maxX:-20,minY:0,maxY:3,minZ:-22,maxZ:-16},
+ {minX:20,maxX:26,minY:0,maxY:3,minZ:16,maxZ:22},
+ {minX:-26,maxX:-20,minY:0,maxY:3,minZ:16,maxZ:22},
+ {minX:20,maxX:26,minY:0,maxY:3,minZ:-22,maxZ:-16}
 ];
 
 const players=new Map();
@@ -57,6 +84,29 @@ function rayHit(origin,dir,target,maxRange){
  if(disc<0)return null;
  const t=-b-Math.sqrt(disc);
  return t>=0&&t<=maxRange?t:null;
+}
+function rayAABB(origin,dir,box,maxRange){
+ let tmin=0,tmax=maxRange;
+ for(const axis of ["x","y","z"]){
+  const o=origin[axis],d=dir[axis],mn=box["min"+axis.toUpperCase()],mx=box["max"+axis.toUpperCase()];
+  if(Math.abs(d)<1e-6){
+   if(o<mn||o>mx)return null;
+   continue;
+  }
+  let t1=(mn-o)/d,t2=(mx-o)/d;
+  if(t1>t2){const q=t1;t1=t2;t2=q}
+  tmin=Math.max(tmin,t1);tmax=Math.min(tmax,t2);
+  if(tmin>tmax)return null;
+ }
+ return tmin>=0&&tmin<=maxRange?tmin:null;
+}
+function nearestWorldHit(origin,dir,maxRange){
+ let best=Infinity;
+ for(const box of BLOCKERS){
+  const t=rayAABB(origin,dir,box,maxRange);
+  if(t!==null&&t<best)best=t;
+ }
+ return best;
 }
 function respawn(p){
  setTimeout(()=>{
@@ -92,9 +142,9 @@ wss.on("connection",ws=>{
   p.lastSeen=Date.now();
 
   if(msg.type==="state"&&p.alive){
-   const nx=Math.max(-26,Math.min(26,Number(msg.x)||0));
+   const nx=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,Number(msg.x)||0));
    const ny=Math.max(1.15,Math.min(12,Number(msg.y)||1.72));
-   const nz=Math.max(-26,Math.min(26,Number(msg.z)||0));
+   const nz=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,Number(msg.z)||0));
    if(Math.hypot(nx-p.x,ny-p.y,nz-p.z)<5.5){p.x=nx;p.y=ny;p.z=nz}
    p.yaw=Number(msg.yaw)||0;p.pitch=Number(msg.pitch)||0;
    const w=weapon(msg.weaponId);if(w)p.weaponId=w.id;
@@ -122,12 +172,13 @@ wss.on("connection",ws=>{
    p.lastShot[w.id]=now;p.weaponId=w.id;p.ammo[w.id]--;
    const dir=normalize(msg.dir);
    const origin={x:p.x,y:p.y-.05,z:p.z};
+   const worldT=nearestWorldHit(origin,dir,w.range);
    let best=null,bestT=Infinity;
    players.forEach(t=>{
     if(t.id===p.id||!t.alive)return;
     const dist=Math.hypot(t.x-p.x,t.y-p.y,t.z-p.z);if(dist>w.range+2)return;
     const hit=rayHit(origin,dir,t,w.range);
-    if(hit!==null&&hit<bestT){best=t;bestT=hit}
+    if(hit!==null&&hit<bestT&&hit<worldT){best=t;bestT=hit}
    });
    broadcast({type:"shot",shooterId:p.id,weaponId:w.id,origin,dir,hitId:best?best.id:null});
    send(ws,{type:"ammo",weaponId:w.id,ammo:p.ammo[w.id]});
