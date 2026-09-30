@@ -800,7 +800,7 @@ function openInventory() {
 function closeInventory() {
   $("inventoryPanel").classList.add("hidden");
   paused=false;
-  if(!isMobile && gameRunning)renderer.domElement.requestPointerLock().catch(()=>{});
+  if(!isMobile && gameRunning)requestLock();
 }
 
 function showDocument(id) {
@@ -815,7 +815,7 @@ function showDocument(id) {
 function hideDocument() {
   $("documentModal").classList.add("hidden");
   paused=false;
-  if(!isMobile&&gameRunning)renderer.domElement.requestPointerLock().catch(()=>{});
+  if(!isMobile&&gameRunning)requestLock();
 }
 
 function craftMedkit() {
@@ -861,7 +861,7 @@ function playerDeath() {
   toast("Caíste en Santa Aurora.");
   setTimeout(()=>{
     player.hp=100;player.alive=true;paused=false;player.pos.set(0,0,53);player.velocity.set(0,0,0);player.group.position.copy(player.pos);updateHealthUI();
-    if(!isMobile)renderer.domElement.requestPointerLock().catch(()=>{});
+    if(!isMobile)requestLock();
   },2200);
 }
 
@@ -917,10 +917,10 @@ function updatePlayer(dt) {
   const speed2=Math.hypot(player.velocity.x,player.velocity.z);
   if(speed2>.25){
     const targetYaw=Math.atan2(player.velocity.x,player.velocity.z);
-    player.yaw=THREE.MathUtils.lerpAngle(player.yaw,targetYaw,1-Math.pow(.0005,dt));
+    player.yaw=lerpAngle(player.yaw,targetYaw,1-Math.pow(.0005,dt));
     player.group.rotation.y=player.yaw;
   }else if(player.aiming){
-    player.yaw=THREE.MathUtils.lerpAngle(player.yaw,player.cameraYaw,1-Math.pow(.0005,dt));
+    player.yaw=lerpAngle(player.yaw,player.cameraYaw,1-Math.pow(.0005,dt));
     player.group.rotation.y=player.yaw;
   }
 
@@ -1174,7 +1174,7 @@ function moveEnemyToward(e,target,speed,dt) {
   const nx=e.pos.x+dir.x*speed*dt,nz=e.pos.z+dir.z*speed*dt;
   if(!collidesAt(nx,e.pos.z))e.pos.x=nx;
   if(!collidesAt(e.pos.x,nz))e.pos.z=nz;
-  e.group.rotation.y=THREE.MathUtils.lerpAngle(e.group.rotation.y,Math.atan2(dir.x,dir.z),1-Math.pow(.001,dt));
+  e.group.rotation.y=lerpAngle(e.group.rotation.y,Math.atan2(dir.x,dir.z),1-Math.pow(.001,dt));
   return d;
 }
 
@@ -1352,7 +1352,7 @@ function endCinematic() {
   if(isMobile)$("touchUI").classList.remove("hidden");
   else{
     $("desktopHelp").classList.remove("hidden");
-    renderer.domElement.requestPointerLock().catch(()=>{});
+    requestLock();
   }
   setMission(0);updateInventoryUI();updateHealthUI();
   toast("Santa Aurora. Avenida Sur.");
@@ -1402,7 +1402,7 @@ function setupControls() {
   renderer.domElement.addEventListener("click",()=>{
     if(!isMobile&&gameRunning&&paused&&!cinematicRunning&&!$("inventoryPanel").classList.contains("hidden"))return;
     if(!isMobile&&gameRunning&&document.pointerLockElement!==renderer.domElement&&!cinematicRunning){
-      renderer.domElement.requestPointerLock().catch(()=>{});
+      requestLock();
     }
   });
 
