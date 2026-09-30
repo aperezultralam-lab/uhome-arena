@@ -11,7 +11,7 @@ AMCDestructibleSurface::AMCDestructibleSurface()
 
     GeometryCollection->SetCollisionProfileName(TEXT("BlockAll"));
 
-    FieldSystem = CreateDefaultSubobject<UFieldSystemComponent>(TEXT("FieldSystem"));
+    FieldSystem = CreateDefaultSubobject<UFieldSystemComponent>(TEXT("FieldSystem"));\n    FieldSystem->SetupAttachment(GeometryCollection);
 
     bReplicates = true;
     SetReplicateMovement(false);
