@@ -3,38 +3,83 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1120">
-<title>UHome Arena</title>
+<meta name="theme-color" content="#070b13">
+<title>UHome Arena | Material Warfare</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <canvas id="game"></canvas>
+
 <div id="menu" class="overlay">
   <div class="panel">
+    <div class="eyebrow">UHOME // MULTIPLAYER FPS</div>
     <div class="brand">UHOME <span>ARENA</span></div>
-    <h1>Transforma el espacio. Domina el showroom.</h1>
-    <p>Arena multijugador donde compites instalando materiales UHome en muros, pisos, vigas y plafones.</p>
+    <h1>MATERIAL<br>WARFARE</h1>
+    <p>FPS multijugador original con armas futuristas inspiradas en materiales reales de UHome.</p>
+
+    <div class="featured">
+      <div><b>SPC CARBINE</b><span>Piso SPC Nogal Americano</span></div>
+      <div><b>MÁRMOL DMR</b><span>Placa Mármol Statuario</span></div>
+      <div><b>ULTRAFLEX CANNON</b><span>Piedra Flexible Rough Cocoon</span></div>
+    </div>
+
     <label>Nombre de jugador</label>
     <input id="name" maxlength="18" placeholder="Tu nombre">
-    <button id="play">ENTRAR A LA ARENA</button>
-    <div class="how"><div><b>WASD</b><span>Mover</span></div><div><b>SHIFT</b><span>Correr</span></div><div><b>ESPACIO</b><span>Saltar</span></div><div><b>1–8</b><span>Material</span></div><div><b>CLICK</b><span>Instalar</span></div></div>
+    <button id="play">ENTRAR AL COMBATE</button>
+
+    <div class="how">
+      <div><b>WASD</b><span>Mover</span></div>
+      <div><b>SHIFT</b><span>Sprint</span></div>
+      <div><b>ESPACIO</b><span>Saltar</span></div>
+      <div><b>CLICK</b><span>Disparar</span></div>
+      <div><b>R</b><span>Recargar</span></div>
+      <div><b>1–6</b><span>Cambiar arma</span></div>
+    </div>
   </div>
 </div>
+
 <div id="hud" class="hidden">
- <div class="topbar"><div><span>UHOME ARENA</span><strong>REMODEL RUSH</strong></div><div class="round">RONDA <b id="round">1</b><strong id="timer">05:00</strong></div></div>
- <div class="crosshair">+</div>
- <div id="feed"></div>
- <div class="scoreboard"><h3>CLASIFICACIÓN</h3><div id="scores"></div></div>
- <div class="material-card"><span>MATERIAL ACTIVO</span><strong id="materialName">Lambrín Interior</strong><small id="materialType">Muro</small></div>
- <div id="inventoryBar" class="inventory"></div>
- <div class="status"><span id="players">1 jugador</span></div>
+  <div class="topbar">
+    <div class="game-title"><span>UHOME ARENA</span><strong>MATERIAL WARFARE</strong></div>
+    <div class="round">RONDA <b id="round">1</b><strong id="timer">05:00</strong></div>
+  </div>
+
+  <div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmarker" class="hitmarker hidden">×</div>
+  <div id="damageFlash"></div>
+  <div id="feed"></div>
+
+  <div class="scoreboard">
+    <h3>CLASIFICACIÓN</h3>
+    <div id="scores"></div>
+  </div>
+
+  <div class="weapon-panel">
+    <span id="productName">Piso SPC Nogal Americano</span>
+    <strong id="weaponName">SPC CARBINE</strong>
+    <div class="ammo"><b id="ammo">28</b><em>/</em><small id="mag">28</small></div>
+  </div>
+
+  <div class="vitals">
+    <span>VIDA</span>
+    <div class="healthbar"><i id="healthFill"></i></div>
+    <strong id="health">100</strong>
+  </div>
+
+  <div id="weaponBar" class="weapon-bar"></div>
+  <div class="status"><span id="players">1 jugador</span></div>
+  <div class="stats"><span>K <b id="kills">0</b></span><span>D <b id="deaths">0</b></span></div>
+  <div id="respawn" class="respawn hidden">REAPARECIENDO...</div>
 </div>
+
 <div id="touchControls" class="touch-controls hidden">
- <div id="stickBase" class="stick-base"><div id="stickKnob" class="stick-knob"></div></div>
- <div id="lookPad" class="look-pad"></div>
- <button id="jumpBtn" class="touch-btn jump">↑</button>
- <button id="actionBtn" class="touch-btn action">INSTALAR</button>
+  <div id="stickBase" class="stick-base"><div id="stickKnob" class="stick-knob"></div></div>
+  <div id="lookPad" class="look-pad"></div>
+  <button id="jumpBtn" class="touch-btn jump">↑</button>
+  <button id="reloadBtn" class="touch-btn reload">R</button>
+  <button id="actionBtn" class="touch-btn action">FIRE</button>
 </div>
+
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"}}</script>
 <script type="module" src="/game.js"></script>
 </body>
